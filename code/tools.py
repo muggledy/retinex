@@ -56,8 +56,8 @@ def get_gauss_kernel(sigma,dim=2):
        result image of 1) with the second row filter. Analyse the time complexity: if 
        m&n is the shape of image, p&q is the size of 2-D filter, bluring image with 
        2-D filter takes O(mnpq), but two-step method takes O(pmn+qmn)'''
-    ksize=int(np.floor(sigma*6)/2)*2+1 #kernel size refer to https://github.com/upcAutoLang/ \
-    #MSRCR-Restoration/blob/master/src/MSRCR.cpp
+    ksize=int(np.floor(sigma*6)/2)*2+1 #kernel size("3-σ"法则) refer to 
+    #https://github.com/upcAutoLang/MSRCR-Restoration/blob/master/src/MSRCR.cpp
     k_1D=np.arange(ksize)-ksize//2
     k_1D=np.exp(-k_1D**2/(2*sigma**2))
     k_1D=k_1D/np.sum(k_1D)
