@@ -12,7 +12,7 @@
   In my test, it is comparable to cv2's filter2D(filter image with a gaussian kernel), 
   even faster. But i don't think it can overcome some optimized parallel scheme. Lastly, 
   this code has shortcoming, you can not set too big sigma without fixing, so now it is 
-  just a demo for reading
+  just a demo for reference only
 */
 
 int* boxes_for_gauss(double sigma,int n){
@@ -46,7 +46,7 @@ void box_blur_h(double *channel,double *result,int w,int h,int r){
 			val+=channel[ri++]-channel[li++];
 			result[ti++]=val*iarr;
 		}
-		for(int j=w-r;j<w;j++){ // too big sigma, too big r, if r>w, it will collapse!
+		for(int j=w-r;j<w;j++){ //too big sigma, too big r, if r>w/2, it will collapse! I have added a check of r
 			val+=lv-channel[li++];
 			result[ti++]=val*iarr;
 		}
@@ -87,6 +87,10 @@ void box_blur_t(double *channel,double *result,int w,int h,int r){
 }
 
 void box_blur(double *channel,double *result,int w,int h,int r){
+	if(!(r>=0&&r<=(int)(w-2)/2) || !(r>=0&&r<=(int)(h-2)/2)){ //check of r
+		printf("too big sigma, cut off!\n");
+		r=min((int)(w-2)/2,(int)(h-2)/2);
+	}
 	for(int i=0;i<w*h;i++) result[i]=channel[i];
 	box_blur_h(result,channel,w,h,r);
 	box_blur_t(channel,result,w,h,r);

@@ -11,7 +11,8 @@ Main function:
  -Path-based model
     retinex_FM, 
  -Center/Surround model
-    retinex_SSR, retinex_MSR, retinex_MSRCR, retinex_gimp, retinex_MSRCP
+    retinex_SSR, retinex_MSR, retinex_MSRCR, retinex_gimp, retinex_MSRCP, 
+    retinex_AMSR, 
 
 References:
 [1] D. J. Jobson, Z. Rahman and G. A. Woodell, "A multiscale retinex for bridging the 
@@ -138,11 +139,11 @@ def retinex_MSR(img,sigmas=[15,80,250],weights=None):
         ret[...,i]=stretch
     return ret.squeeze()
 
-def MultiScaleRetinex(img,sigmas=[15,80,250],weights=None):
+def MultiScaleRetinex(img,sigmas=[15,80,250],weights=None,flag=True):
     '''equal to func retinex_MSR, just remove the outer for-loop. Practice has proven 
        that when MSR used in MSRCR or Gimp, we should add stretch step, otherwise the 
        result color may be dim. But it's up to you, if you select to neglect stretch, 
-       comment out the last four lines of code, have fun'''
+       set flag as False, have fun'''
     if weights==None:
         weights=np.ones(len(sigmas))/len(sigmas)
     elif not abs(sum(weights)-1)<0.00001:
@@ -151,12 +152,11 @@ def MultiScaleRetinex(img,sigmas=[15,80,250],weights=None):
     img=img.astype('double')
     for i,sigma in enumerate(sigmas):
         r+=(np.log(img+1)-np.log(gauss_blur(img,sigma)+1))*weights[i]
-    #'''
-    mmin=np.min(r,axis=(0,1),keepdims=True)
-    mmax=np.max(r,axis=(0,1),keepdims=True)
-    r=(r-mmin)/(mmax-mmin)*255 #maybe indispensable when used in MSRCR or Gimp, make pic vibrant
-    r=r.astype('uint8')
-    #'''
+    if flag:
+        mmin=np.min(r,axis=(0,1),keepdims=True)
+        mmax=np.max(r,axis=(0,1),keepdims=True)
+        r=(r-mmin)/(mmax-mmin)*255 #maybe indispensable when used in MSRCR or Gimp, make pic vibrant
+        r=r.astype('uint8')
     return r
 
 '''old version
@@ -203,7 +203,7 @@ def retinex_MSRCR(img,sigmas=[12,80,250],s1=0.01,s2=0.01):
     alpha=125
     img=img.astype('double')+1 #
     csum_log=np.log(np.sum(img,axis=2))
-    msr=MultiScaleRetinex(img,sigmas)
+    msr=MultiScaleRetinex(img-1,sigmas) #-1
     r=(np.log(alpha*img)-csum_log[...,None])*msr
     #beta=46;G=192;b=-30;r=G*(beta*r-b) #deprecated
     #mmin,mmax=np.min(r),np.max(r)
@@ -224,7 +224,7 @@ def retinex_gimp(img,sigmas=[12,80,250],dynamic=2):
     offset=0
     img=img.astype('double')+1 #
     csum_log=np.log(np.sum(img,axis=2))
-    msr=MultiScaleRetinex(img,sigmas)
+    msr=MultiScaleRetinex(img-1,sigmas) #-1
     r=gain*(np.log(alpha*img)-csum_log[...,None])*msr+offset
     mean=np.mean(r,axis=(0,1),keepdims=True)
     var=np.sqrt(np.sum((r-mean)**2,axis=(0,1),keepdims=True)/r[...,0].size)
@@ -248,3 +248,41 @@ def retinex_MSRCP(img,sigmas=[12,80,250],s1=0.01,s2=0.01):
     B=np.max(img,axis=2)
     A=np.min(np.stack((255/(B+eps),Int1/(Int+eps)),axis=2),axis=-1)
     return (A[...,None]*img).astype('uint8')
+
+@measure_time
+def retinex_AMSR(img,sigmas=[12,80,250]):
+    '''see Proposed Method ii in "An automated multi Scale Retinex with Color 
+       Restoration for image enhancement"(doi: 10.1109/NCC.2012.6176791)'''
+    img=img.astype('double')+1 #
+    msr=MultiScaleRetinex(img-1,sigmas,flag=False) #
+    y=0.05
+    for i in range(msr.shape[-1]):
+        v,c=np.unique((msr[...,i]*100).astype('int'),return_counts=True)
+        sort_v_index=np.argsort(v)
+        sort_v,sort_c=v[sort_v_index],c[sort_v_index] #plot hist
+        zero_ind=np.where(sort_v==0)[0][0]
+        zero_c=sort_c[zero_ind]
+        #
+        _=np.where(sort_c[:zero_ind]<=zero_c*y)[0]
+        if len(_)==0:
+            low_ind=0
+        else:
+            low_ind=_[-1]
+        _=np.where(sort_c[zero_ind+1:]<=zero_c*y)[0]
+        if len(_)==0:
+            up_ind=len(sort_c)-1
+        else:
+            up_ind=_[0]+zero_ind+1
+        #
+        low_v,up_v=sort_v[[low_ind,up_ind]]/100 #low clip value and up clip value
+        msr[...,i]=np.maximum(np.minimum(msr[:,:,i],up_v),low_v)
+        mmin=np.min(msr[...,i])
+        mmax=np.max(msr[...,i])
+        msr[...,i]=(msr[...,i]-mmin)/(mmax-mmin)*255
+    msr=msr.astype('uint8')
+    return msr
+    '''step of color restoration, maybe all right
+    r=(np.log(125*img)-np.log(np.sum(img,axis=2))[...,None])*msr
+    mmin,mmax=np.min(r),np.max(r)
+    return ((r-mmin)/(mmax-mmin)*255).astype('uint8')
+    '''
